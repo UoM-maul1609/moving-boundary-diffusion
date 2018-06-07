@@ -60,7 +60,7 @@
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         call allocate_and_set_diff(nmd%kp,nmd%dt,nmd%runtime, &
             nmd%rad, nmd%rad_min, nmd%rad_max, nmd%t,nmd%p, nmd%rh, nmd%mwsol, &
-            nmd%rhosol, nmd%d_coeff, &
+            nmd%rhosol, nmd%nu, nmd%d_coeff, &
             gridd%kp,gridd%kp_cur, &
             gridd%ntim,gridd%dt, gridd%rad,gridd%rad_min, gridd%rad_max, &
             gridd%t,gridd%p,gridd%rh, &

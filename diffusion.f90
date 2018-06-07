@@ -37,7 +37,7 @@
         character (len=200) :: inputfile='input'
         character (len=200) :: outputfile='output'
         integer(i4b) :: kp
-        real(sp) :: runtime,dt,rad,rad_min,rad_max,t,p,rh,mwsol,rhosol,d_coeff
+        real(sp) :: runtime,dt,rad,rad_min,rad_max,t,p,rh,mwsol,rhosol,nu,d_coeff
     end type namelist_input
 
 
@@ -423,6 +423,7 @@
 	!>@param[inout] t: temperaturepressurenumber of grid points
 	!>@param[inout] rh: rh
 	!>@param[inout] mwsol: molecular weight of solute
+	!>@param[inout] nm_nu: van hoff factor
 	!>@param[inout] rhosol: density of solute
 	!>@param[inout] d_coeff: diffusion coefficient
 	!>@param[inout] r, r_old: radius array
@@ -438,7 +439,7 @@
 	subroutine allocate_and_set_diff(nm_kp,nm_dt,nm_runtime,nm_rad, &
 	        nm_rad_min, nm_rad_max, nm_t,nm_p,&
 	         nm_rh, nm_mwsol, &
-            nm_rhosol, nm_d_coeff, &
+            nm_rhosol, nm_nu, nm_d_coeff, &
             kp,kp_cur,ntim,dt, rad,rad_min,rad_max,t,p,rh, &
             mwsol,rhosol,d_coeff,r,r_old,r05,r05_old, &
             u,d,d05,dr,dr_old,dr05,dr05_old,vol,vol_old, c,cold)
@@ -448,7 +449,7 @@
 		integer(i4b), intent(in) :: nm_kp
 		real(sp), intent(in) :: nm_dt,nm_runtime,nm_rad, &
 		                        nm_rad_min, nm_rad_max, nm_t,nm_p,nm_rh,&
-		                        nm_mwsol,nm_rhosol,nm_d_coeff
+		                        nm_mwsol,nm_rhosol,nm_nu, nm_d_coeff
 		integer(i4b), intent(inout) :: kp,kp_cur, ntim
 		real(sp), intent(inout) :: dt,rad,t,p,rh,mwsol,rhosol,d_coeff, &
 		            rad_min,rad_max
@@ -530,8 +531,8 @@
         
         
         ! number of moles of water:
-        nw=vol / (mw/rhow + (1._sp-rh)/rh*mwsol/rhosol)
-        na=(1._sp-rh)/rh*nw
+        nw=vol / (mw/rhow + (1._sp-rh)/(rh*nm_nu)*mwsol/rhosol)
+        na=(1._sp-rh)/(rh*nm_nu)*nw
         
         ! put some more in the outer shell - for testing
 !         nw(200:210)=vol(200:210) / (mw/rhow + (1._sp-0.9_sp)/0.9_sp*mwsol/rhosol)
