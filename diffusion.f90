@@ -255,7 +255,7 @@
 !             volw_first_layer= deltaV2*min(volw_first_layer/deltaV2,1._sp)
             ! new radius - with just the water
             rnew=(3._sp*(volw_first_layer) / (4._sp*pi)+r05u(k-1)**3)**(1._sp/3._sp) 
-            rnew=min(r05(k-1)+1.e-10_sp,rnew)
+            rnew=max(r05(k-1)+1.e-15_sp,rnew)
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             ! assertion:                                                             !
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
