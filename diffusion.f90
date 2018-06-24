@@ -167,7 +167,7 @@
 		real(sp), dimension(0:kp+1) :: rold, r05u
 		real(sp), dimension(1:kp+1,1:2) :: ctmp
 		real(sp) :: da_dt, max_flux, rnew, mf, deltaV2, volwtot, v, volw_first_layer, &
-		            volo_outer, deltaVo
+		            volo_outer, deltaVo, volstot
 		real(sp), dimension(1:kp+1,1:2) :: moles
 		real(sp), dimension(2) :: moles_outer
 		integer(i4b) :: i, j, k, kp_new, iter
@@ -232,6 +232,7 @@
     		    ! total number of moles
     		    moles(1:kp,i)=c(1:kp,i)*vol
     		enddo
+    	    volstot=sum(moles(1:kp_cur,2)) *mwsol/rhosol ! total volume of water
     	    volwtot=sum(moles(1:kp_cur,1)) *mw/rhow ! total volume of water
     	    if (volwtot .le. 0._sp) return
     	    deltaV2=min(volwtot*0.999_sp,deltaV2) ! total volume to remove
@@ -319,7 +320,7 @@
             c(1:kp,2)=moles(1:kp,2)/vol
             c(kp_cur+1:kp,:)=0._sp
 !             print *,volwtot, sum(moles(1:kp_cur,1)) *mw/rhow+deltaV2
-
+!             print *, volstot, sum(moles(1:kp_cur,2)) *mwsol/rhosol
 !     	    radius=rnew
 		endif
 		
