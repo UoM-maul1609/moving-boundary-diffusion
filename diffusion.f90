@@ -222,7 +222,6 @@
             
             c(kp_cur+1:kp,:)=0._sp
     	else if(deltaV .lt. 0._sp) then
-            
 		    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		    ! shrink the particle:                                                       !
 		    ! takes off the water from outer layers, then fill outer with solute         !
@@ -254,7 +253,7 @@
             volw_first_layer = v-deltaV2
 !             volw_first_layer= deltaV2*min(volw_first_layer/deltaV2,1._sp)
             ! new radius - with just the water
-            rnew=(3._sp*(volw_first_layer) / (4._sp*pi)+r05u(k-1)**3)**(1._sp/3._sp) 
+            rnew=(3._sp*(volw_first_layer) / (4._sp*pi)+r05(k-1)**3)**(1._sp/3._sp) 
             rnew=max(r05(k-1)+1.e-15_sp,rnew)
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             ! assertion:                                                             !
@@ -373,7 +372,6 @@
         
         kp_cur=locate(r05(0:kp+1),radius)
         kp_cur=kp_cur
-        
         
         ! set the grid boundary to be the radius
         r05(kp_cur)=radius
