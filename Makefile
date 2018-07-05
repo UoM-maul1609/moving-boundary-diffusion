@@ -13,8 +13,8 @@ NETCDFLIB=-L ${NETCDF_FOR}/lib/  \
 NETCDFMOD= ${NETCDF_FOR}/include/
 
 
-FOR = mpif90 -c  
-FOR2 = mpif90  
+FOR = gfortran -c  
+FOR2 = gfortran  
 
 AR = ar 
 RANLIB = ranlib 
@@ -26,7 +26,7 @@ FFLAGS2 =  $(DEBUG) -O3 -o
 
 main.exe	:  main.$(OBJ) diffusion.$(OBJ)  \
 			 diff_lib.a 
-	$(FOR2) $(FFLAGSOMP)main.exe main.$(OBJ) diffusion.$(OBJ)  \
+	$(FOR2) $(FFLAGS)main.exe main.$(OBJ) diffusion.$(OBJ)  \
 			 -lm diff_lib.a \
 		 ${NETCDFLIB} -I ${NETCDFMOD} ${NETCDF_LIB} $(DEBUG)
 diff_lib.a	:   nrtype.$(OBJ) nr.$(OBJ) nrutil.$(OBJ) locate.$(OBJ) polint.$(OBJ) \
