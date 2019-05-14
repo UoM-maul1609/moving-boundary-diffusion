@@ -204,7 +204,7 @@
             mf=moles_outer(1) / sum(moles_outer)
             
             ! concept here is to set the mole fraction in the new layers to mf
-            call set_nodes(kp,kp_new,rnew,rad_min,rad_max, r,r05,dr,dr05,vol,c)
+            call set_nodes(kp,kp_new,rnew,rad_min,rad_max, r,r05,dr,dr05,vol,c,moles)
             do j=kp_cur,kp_new
                 ! water:
                 c(j,1)=1._sp/(mw/rhow+(1._sp/mf-1._sp)*mwsol/rhosol)
@@ -216,7 +216,7 @@
 
 
             ! set the values of radius / volume and the boundary
-            call set_nodes(kp,kp_cur,rnew,rad_min,rad_max, r,r05,dr,dr05,vol,c)
+            call set_nodes(kp,kp_cur,rnew,rad_min,rad_max, r,r05,dr,dr05,vol,c,moles)
 		    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             radius=rnew
             
@@ -313,7 +313,7 @@
 
 
             ! set the values of radius / volume and the boundary
-            call set_nodes(kp,kp_cur,rnew,rad_min,rad_max, r,r05,dr,dr05,vol,c)
+            call set_nodes(kp,kp_cur,rnew,rad_min,rad_max, r,r05,dr,dr05,vol,c,moles)
 
             c(1:kp,1)=moles(1:kp,1)/vol
             c(1:kp,2)=moles(1:kp,2)/vol
@@ -346,7 +346,8 @@
 	!>@param[inout] dr05: grid spacing from boundary
 	!>@param[inout] vol: volume of grid points
 	!>@param[inout] c: concentration of components
-    subroutine set_nodes(kp,kp_cur,radius,rad_min, rad_max,r,r05,dr,dr05,vol,c)
+	!>@param[inout] moles: moles of components
+    subroutine set_nodes(kp,kp_cur,radius,rad_min, rad_max,r,r05,dr,dr05,vol,c,moles)
 		use nrtype
 		use nr, only : locate
         implicit none
@@ -356,9 +357,10 @@
 
 		real(sp), intent(inout), dimension(0:kp+1) :: r, r05, dr, dr05
 		real(sp), intent(inout), dimension(1:kp) :: vol
-		real(sp), intent(inout), dimension(1:kp+1,1:2) :: c
+		real(sp), intent(inout), dimension(1:kp+1,1:2) :: c,moles
 		
 		integer(i4b) :: i,k
+		logical :: flag=.false.
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! set arrays                                                                     !
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -367,12 +369,22 @@
                 /real(kp,sp)*real(i,sp)+ &
                 log10(rad_min) )
         enddo
-        r(1:kp+1)=(r05(0:kp)+r05(1:kp+1))/2._sp
-        r(0)=0._sp
         
         kp_cur=locate(r05(0:kp+1),radius)
         kp_cur=kp_cur
         
+        ! if this layer is thinner than 1e-15 remove outer the layer, and add moles to
+        ! inner layer        
+        if((radius-r05(kp_cur-1)).lt.1.e-15_sp) then
+            flag=.true.
+            moles(kp_cur-1,1)=moles(kp_cur-1,1)+moles(kp_cur,1)
+            moles(kp_cur-1,2)=moles(kp_cur-1,2)+moles(kp_cur,2)
+            kp_cur=kp_cur-1
+        endif
+        
+        r(1:kp+1)=(r05(0:kp)+r05(1:kp+1))/2._sp
+        r(0)=0._sp
+
         ! set the grid boundary to be the radius
         r05(kp_cur)=radius
         r(kp_cur)=(r05(kp_cur)+r05(kp_cur-1))/2._sp
@@ -390,7 +402,6 @@
         dr(kp+1)=dr(kp)
         vol=4._sp*pi/3._sp *(r05(1:kp)**3-r05(0:kp-1)**3)
 
-        
     end subroutine set_nodes
 	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -522,7 +533,7 @@
         if (AllocateStatus /= 0) STOP "*** Not enough memory ***"        
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        call set_nodes(kp,kp_cur,rad,nm_rad_min, nm_rad_max,r,r05,dr,dr05,vol,c)
+        call set_nodes(kp,kp_cur,rad,nm_rad_min, nm_rad_max,r,r05,dr,dr05,vol,c,cold)
 
         d(1:kp+1) = d_coeff
         d05(1:kp+1) = d_coeff
