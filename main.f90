@@ -22,7 +22,7 @@
 	!>main programme reads in information, allocates arrays, then calls the model driver
 
     program main
-        use nrtype
+        use numerics_type
         use diffusion, only : allocate_and_set_diff, diffusion_driver, gridd, &
                             iod, nmd
         

@@ -1,3 +1,9 @@
+OSNF_DIR = osnf
+
+.PHONY: osnf_code clearnall
+CLEANDIRS = $(OSNF_DIR) ./
+
+
 DEBUG = -fbounds-check -g 
 OPT    =-O3
 
@@ -25,45 +31,23 @@ FFLAGS2 =  $(DEBUG) -O3 -o
 
 
 main.exe	:  main.$(OBJ) diffusion.$(OBJ)  \
-			 diff_lib.a 
+			 diff_lib.a osnf_code 
 	$(FOR2) $(FFLAGS)main.exe main.$(OBJ) diffusion.$(OBJ)  \
 			 -lm diff_lib.a \
 		 ${NETCDFLIB} -I ${NETCDFMOD} ${NETCDF_LIB} $(DEBUG)
-diff_lib.a	:   nrtype.$(OBJ) nr.$(OBJ) nrutil.$(OBJ) locate.$(OBJ) polint.$(OBJ) \
-				tridag.$(OBJ) rkqs.$(OBJ) rkck.$(OBJ) odeint.$(OBJ) zbrent.$(OBJ) \
-				random.$(OBJ)
-	$(AR) rc diff_lib.a nrutil.$(OBJ) locate.$(OBJ) polint.$(OBJ) tridag.$(OBJ) \
-				rkqs.$(OBJ) rkck.$(OBJ) odeint.$(OBJ) zbrent.$(OBJ) \
-				random.$(OBJ)
-locate.$(OBJ)	: locate.f90
-	$(FOR) locate.f90 $(FFLAGS)locate.$(OBJ)
-polint.$(OBJ)	: polint.f90
-	$(FOR) polint.f90 $(FFLAGS)polint.$(OBJ)
-tridag.$(OBJ)	: tridag.f90
-	$(FOR) tridag.f90 $(FFLAGS)tridag.$(OBJ)
-nrtype.$(OBJ)	: nrtype.f90
-	$(FOR) nrtype.f90 $(FFLAGS)nrtype.$(OBJ)
-nr.$(OBJ)	: nr.f90 
-	$(FOR) nr.f90 $(FFLAGS)nr.$(OBJ)
-nrutil.$(OBJ)	: nrutil.f90
-	$(FOR) nrutil.f90 $(FFLAGS)nrutil.$(OBJ)
-rkqs.$(OBJ)	: rkqs.f90
-	$(FOR) rkqs.f90 $(FFLAGS)rkqs.$(OBJ)	
-rkck.$(OBJ)	: rkck.f90
-	$(FOR) rkck.f90 $(FFLAGS)rkck.$(OBJ)	
-odeint.$(OBJ)	: odeint.f90
-	$(FOR) odeint.f90 $(FFLAGS)odeint.$(OBJ)	
-zbrent.$(OBJ)	: zbrent.f90
-	$(FOR) zbrent.f90 $(FFLAGS2)zbrent.$(OBJ)	
-random.$(OBJ) : random.f90 
-	$(FOR) random.f90 $(FFLAGS)random.$(OBJ) 
-diffusion.$(OBJ) : diffusion.f90 nrtype.$(OBJ) nr.$(OBJ) locate.$(OBJ)
-	$(FOR) diffusion.f90 -I ${NETCDFMOD} $(FFLAGSOMP)diffusion.$(OBJ)
-main.$(OBJ)   : main.f90 nrtype.$(OBJ) \
-			diffusion.$(OBJ)  
-	$(FOR)  main.f90 -I ${NETCDFMOD} $(FFLAGS)main.$(OBJ) 
+diff_lib.a   :  osnf_code 
+	cp $(OSNF_DIR)/osnf_lib.a diff_lib.a 
+diffusion.$(OBJ) : diffusion.f90 osnf_code diff_lib.a
+	$(FOR) diffusion.f90 -I ${NETCDFMOD} -I${OSNF_DIR} $(FFLAGSOMP)diffusion.$(OBJ)
+main.$(OBJ)   : main.f90 diffusion.$(OBJ)  
+	$(FOR)  main.f90 -I ${NETCDFMOD} -I${OSNF_DIR} $(FFLAGS)main.$(OBJ) 
 
+osnf_code:
+	$(MAKE) -C $(OSNF_DIR)
 clean :
-	rm *.exe  *.o *.mod *~ \
-	diff_lib.a
-
+	rm *.exe *.o *.mod *~ \
+	*.a;rm -R *.dSYM
+cleanall:
+	for i in $(CLEANDIRS); do \
+		$(MAKE) -C $$i clean; \
+	done
