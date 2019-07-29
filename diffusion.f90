@@ -11,7 +11,7 @@
 	!>variables and types for the moving boundary diffusion model
 
     implicit none
-    real(wp), parameter :: rhow=1000._sp, mw=18.e-3_sp
+    real(wp), parameter :: rhow=1000._wp, mw=18.e-3_wp
     
     !>@brief
     !>main model prognostic variables
@@ -278,7 +278,7 @@
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             volo_outer=sum(moles(k:kp_cur,2)) *mwsol/rhosol ! total volume of solute
             iter=0
-            do while ((volo_outer .gt. 0._sp) )
+            do while ((volo_outer .gt. 0._wp) )
                 iter=iter+1
                 ! this is how much shell volume the solute,in this search, occupies:
                 deltaVo=min(4._wp*pi/3._wp*(r05u(k)**3-r05u(k-1)**3)- &
@@ -615,7 +615,7 @@
 		real(wp), intent(inout), dimension(1:kp+1,1:2) :: c, cold
 		
 		integer(i4b) :: n
-		real(wp) :: time, radius, radiusold,flux=0._sp, deltaV
+		real(wp) :: time, radius, radiusold,flux=0._wp, deltaV
 		
 		radius=rad
 		radiusold=radius
