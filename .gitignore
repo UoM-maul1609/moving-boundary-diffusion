@@ -4,4 +4,4 @@
 *.so
 *.exe
 doxygen
-
+*.dSYM
