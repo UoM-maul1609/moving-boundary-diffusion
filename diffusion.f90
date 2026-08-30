@@ -75,12 +75,54 @@
     ! declare an io type
     type(io) :: iod
 
+    ! Shared logarithmic reference grid. All BDM particles currently use the
+    ! same kp/rad_min/rad_max, while each particle retains its own moving r05,
+    ! r, dr, dr05 and vol arrays. Cache the expensive 10**/log10 construction
+    ! and rebuild only if a caller uses different reference-grid settings.
+    real(wp), dimension(:), allocatable, save :: r05_reference
+    integer(i4b), save :: r05_reference_kp=-1_i4b
+    real(wp), save :: r05_reference_rad_min=-1._wp
+    real(wp), save :: r05_reference_rad_max=-1._wp
 
     private
     public :: backward_euler, move_boundary, allocate_and_set_diff, diffusion_driver, &
         gridd, nmd,iod, grid
     contains
-       
+
+    ! Build/cache the fixed logarithmic half-level reference grid. The moving
+    ! particle boundary is applied afterwards to each particle's own r05 array.
+    subroutine ensure_reference_grid(kp,rad_min,rad_max)
+        implicit none
+        integer(i4b), intent(in) :: kp
+        real(wp), intent(in) :: rad_min,rad_max
+
+        integer(i4b) :: i, AllocateStatus
+        logical :: rebuild
+
+        rebuild=.not. allocated(r05_reference)
+        if(.not. rebuild) then
+            rebuild=(r05_reference_kp /= kp .or. &
+                     r05_reference_rad_min /= rad_min .or. &
+                     r05_reference_rad_max /= rad_max)
+        endif
+
+        if(rebuild) then
+            if(allocated(r05_reference)) deallocate(r05_reference)
+            allocate(r05_reference(0:kp+1),STAT=AllocateStatus)
+            if(AllocateStatus /= 0) stop '*** Not enough memory for reference grid ***'
+
+            do i=0,kp+1
+                r05_reference(i)=10._wp**( &
+                    (log10(rad_max)-log10(rad_min))/real(kp,wp)*real(i,wp) + &
+                    log10(rad_min))
+            enddo
+
+            r05_reference_kp=kp
+            r05_reference_rad_min=rad_min
+            r05_reference_rad_max=rad_max
+        endif
+    end subroutine ensure_reference_grid
+
 	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	!>@author
 	!>Paul J. Connolly, The University of Manchester
@@ -101,7 +143,7 @@
 	!>@param[inout] flux: flux on outer boundary
     subroutine backward_euler(kp,kpp,dt, r,r05,u,d,d05,dr,dr05,c,cold,flux)
 		use numerics_type
-        use numerics, only : tridiagonal
+        use numerics, only : numerics_error
         implicit none
 		integer(i4b), intent(in) :: kp, kpp
 		real(wp), intent(inout) :: flux
@@ -113,8 +155,10 @@
 		
 
 		
-		real(wp), dimension(1:kpp) :: cd, b, x, beta, alpha, gamma
+		real(wp), dimension(1:kpp) :: cd, beta, alpha, gamma, cp
 		real(wp), dimension(kpp-1) :: ud, ld
+        real(wp), dimension(1:kpp,1:2) :: x
+        real(wp) :: piv
 		integer(i4b) :: i
 		
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -135,19 +179,33 @@
         beta=1._wp-alpha-gamma
         
         
-        do i=1,2
-            b=c(1:kpp,i)  ! solution vector
-!             if (i .eq. 1) then
-!                 b(kpp)=b(kpp) +flux*(dr(kpp-1)+dr(kpp))/d(kpp)*alpha(kpp)
-!             endif
-            ud=alpha(1:kpp-1)
-            ud(1)=ud(1)+gamma(1) ! added to calculate flux across center==0
-            cd=beta
-            ld=gamma(2:kpp)
-            ld(kpp-1)=ld(kpp-1)+alpha(kpp) ! added to calculate outer flux
-            call tridiagonal(ld,cd,ud,b,x)
-            c(1:kpp,i)=x
+        ! The matrix is identical for water and solute. Factor it once with
+        ! the Thomas algorithm and apply the same factors to both RHS vectors.
+        ! This gives the same discretisation as two calls to tridiagonal, but
+        ! avoids repeating the matrix factorisation.
+        ud=alpha(1:kpp-1)
+        ud(1)=ud(1)+gamma(1) ! added to calculate flux across center==0
+        cd=beta
+        ld=gamma(2:kpp)
+        ld(kpp-1)=ld(kpp-1)+alpha(kpp) ! added to calculate outer flux
+
+        cp=0._wp
+        piv=cd(1)
+        if(piv == 0._wp) call numerics_error('backward_euler: first zero pivot')
+        x(1,1:2)=c(1,1:2)/piv
+
+        do i=2,kpp
+            cp(i)=ud(i-1)/piv
+            piv=cd(i)-cp(i)*ld(i-1)
+            if(piv == 0._wp) call numerics_error('backward_euler: zero pivot')
+            x(i,1:2)=(c(i,1:2)-x(i-1,1:2)*ld(i-1))/piv
         enddo
+
+        do i=kpp-1,1,-1
+            x(i,1:2)=x(i,1:2)-cp(i+1)*x(i+1,1:2)
+        enddo
+
+        c(1:kpp,1:2)=x
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         
         
@@ -173,7 +231,6 @@
 		real(wp), intent(inout), dimension(1:kp) :: vol
 		real(wp), intent(inout), dimension(1:kp+1,1:2) :: c
 		
-		real(wp), dimension(0:kp+1) :: r05u
 		real(wp) :: rnew, mf, deltaV2, volwtot, v, volw_first_layer, &
 		            volo_outer, deltaVo
 		real(wp), dimension(1:kp+1,1:2) :: moles
@@ -181,11 +238,7 @@
 		integer(i4b) :: i, j, k, kp_new
 		
 
-        do i=0,kp+1
-            r05u(i)=10._wp**( (log10(rad_max)-log10(rad_min)) &
-                /real(kp,wp)*real(i,wp)+ &
-                log10(rad_min) )
-        enddo
+        call ensure_reference_grid(kp,rad_min,rad_max)
 
 		
 		if(deltaV .gt. 0._wp) then
@@ -268,8 +321,8 @@
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             ! assertion:                                                             !
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            if(.not. ((rnew .gt. r05u(k-1)) .and. (rnew .le. r05u(k)))) then
-                print *,'assert1: ',rnew, r05u(k-1),r05u(k),r05(k)
+            if(.not. ((rnew .gt. r05_reference(k-1)) .and. (rnew .le. r05_reference(k)))) then
+                print *,'assert1: ',rnew, r05_reference(k-1),r05_reference(k),r05(k)
                 call exit(1)
             endif
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -289,7 +342,7 @@
             volo_outer=sum(moles(k:kp_cur,2)) *mwsol/rhosol ! total volume of solute
             do while ((volo_outer .gt. 0._wp) )
                 ! this is how much shell volume the solute,in this search, occupies:
-                deltaVo=min(4._wp*pi/3._wp*(r05u(k)**3-r05u(k-1)**3)- &
+                deltaVo=min(4._wp*pi/3._wp*(r05_reference(k)**3-r05_reference(k-1)**3)- &
                     moles(k,1)*mw/rhow, volo_outer)
                 if(deltaVo .lt. 0._wp) then 
                     print *,'stopping'
@@ -305,14 +358,14 @@
             v=moles(k,1)*mw/rhow
             v=v+moles(k,2)*mwsol/rhosol
             ! new radius
-            rnew=(3._wp*v/(4._wp*pi)+r05u(k-1)**3)**(1._wp/3._wp)
+            rnew=(3._wp*v/(4._wp*pi)+r05_reference(k-1)**3)**(1._wp/3._wp)
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             ! assertion:                                                             !
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            if(.not. ((rnew .ge. r05u(k-1)) .and. (rnew .lt. r05u(k)))) then
-                print *,'assert2: ',rnew, r05u(k-1),r05u(k)
+            if(.not. ((rnew .ge. r05_reference(k-1)) .and. (rnew .lt. r05_reference(k)))) then
+                print *,'assert2: ',rnew, r05_reference(k-1),r05_reference(k)
                 call exit(1)
             endif
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -366,15 +419,11 @@
 		real(wp), intent(inout), dimension(1:kp) :: vol
 		real(wp), intent(inout), dimension(1:kp+1,1:2) :: c,moles
 		
-		integer(i4b) :: i
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! set arrays                                                                     !
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        do i=0,kp+1
-            r05(i)=10._wp**( (log10(rad_max)-log10(rad_min)) &
-                /real(kp,wp)*real(i,wp)+ &
-                log10(rad_min) )
-        enddo
+        call ensure_reference_grid(kp,rad_min,rad_max)
+        r05=r05_reference
         
         kp_cur=find_pos(r05(0:kp+1),radius)
         kp_cur=kp_cur

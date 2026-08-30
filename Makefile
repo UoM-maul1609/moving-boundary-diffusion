@@ -4,7 +4,7 @@ OSNF_DIR = osnf
 CLEANDIRS = $(OSNF_DIR) ./
 
 
-DEBUG = -fbounds-check -g 
+DEBUG = -g 
 OPT    =-O3
 
 # these three lines should be edited for your system. On systems 
