@@ -28,6 +28,7 @@
         
         implicit none
         character (len=200) :: nmlfile = ' '
+        integer :: ios
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! namelist for run variables                                           !
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -43,10 +44,19 @@
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! read in namelists													   !
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        call getarg(1,nmlfile)
-        open(8,file=nmlfile,status='old', recl=80, delim='apostrophe')
-        read(8,nml=run_vars)
+        call get_command_argument(1,nmlfile)
+        if(len_trim(nmlfile) == 0) nmlfile='namelist.in'
+        open(8,file=trim(nmlfile),status='old',action='read',iostat=ios)
+        if(ios /= 0) then
+            print *, 'Unable to open namelist: ', trim(nmlfile)
+            error stop
+        endif
+        read(8,nml=run_vars,iostat=ios)
         close(8)
+        if(ios /= 0) then
+            print *, 'Unable to read /run_vars/ from: ', trim(nmlfile)
+            error stop
+        endif
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
@@ -69,6 +79,9 @@
             gridd%u,gridd%d,gridd%d05,gridd%dr,gridd%dr_old,&
             gridd%dr05,gridd%dr05_old,gridd%vol,gridd%vol_old, &
             gridd%c,gridd%cold)
+        gridd%kp_cur_old=gridd%kp_cur
+        gridd%rad_old=gridd%rad
+        gridd%da_dt=0._wp
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 

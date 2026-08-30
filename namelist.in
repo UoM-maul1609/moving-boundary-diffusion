@@ -1,17 +1,31 @@
- &run_vars
-	nmd%outputfile = '/tmp/output.nc',
-	nmd%kp=1000,
-	nmd%runtime=1000.,
-	nmd%dt=10.,
-	nmd%rad=100.e-9,
-	nmd%rad_min=1.e-9,
-	nmd%rad_max=5.e-2,
-	nmd%t=298.,
-	nmd%p=100000.,
-	nmd%rh=0.8,
-	nmd%mwsol=200.e-3,
-	nmd%rhosol=1500.,
-	nmd%nu=3.,
-	nmd%d_coeff=1.e-17/
+&run_vars
+    ! NetCDF output from the standalone demonstration driver.
+    nmd%outputfile = '/tmp/output.nc',
 
-	
+    ! Radial grid.  The grid is logarithmic between rad_min and rad_max.
+    nmd%kp      = 1000,
+    nmd%rad     = 100.e-9,
+    nmd%rad_min = 1.e-9,
+    nmd%rad_max = 5.e-2,
+
+    ! Integration. dt=1 s reproduces the resolution used by the example image
+    ! in matlab/images/moving_boundary_diffusion.png.
+    nmd%runtime = 1000.,
+    nmd%dt      = 1.,
+
+    ! Initial solution / solute properties.
+    nmd%t      = 298.,
+    nmd%p      = 100000.,
+    nmd%rh     = 0.8,
+    nmd%mwsol  = 200.e-3,
+    nmd%rhosol = 1500.,
+    nmd%nu     = 3.,
+    nmd%d_coeff = 1.e-17,
+
+    ! Standalone-driver moving-boundary demonstration.
+    ! 0 = no imposed boundary-volume forcing
+    ! 1 = sinusoidal water-volume tendency dV/dt
+    nmd%forcing_mode           = 1,
+    nmd%forcing_period         = 200.,
+    nmd%forcing_dvdt_amplitude = 1.e-22,
+/

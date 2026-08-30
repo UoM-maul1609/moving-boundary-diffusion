@@ -35,9 +35,18 @@
     !>variables for namelist input
     type namelist_input
         character (len=200) :: inputfile='input'
-        character (len=200) :: outputfile='output'
-        integer(i4b) :: kp
-        real(wp) :: runtime,dt,rad,rad_min,rad_max,t,p,rh,mwsol,rhosol,nu,d_coeff
+        character (len=200) :: outputfile='output.nc'
+        integer(i4b) :: kp=1000_i4b
+        real(wp) :: runtime=1000._wp, dt=1._wp
+        real(wp) :: rad=100.e-9_wp, rad_min=1.e-9_wp, rad_max=5.e-2_wp
+        real(wp) :: t=298._wp, p=100000._wp, rh=0.8_wp
+        real(wp) :: mwsol=200.e-3_wp, rhosol=1500._wp, nu=3._wp
+        real(wp) :: d_coeff=1.e-17_wp
+        ! Driver-only demonstration forcing. These extend the namelist without
+        ! changing any existing public procedure argument list.
+        integer(i4b) :: forcing_mode=1_i4b
+        real(wp) :: forcing_period=200._wp
+        real(wp) :: forcing_dvdt_amplitude=1.e-22_wp
     end type namelist_input
 
 
@@ -114,15 +123,16 @@
         ! ck+1
         !u=-u
         flux=0._wp
-        u=0. !1.e-10_wp
-        alpha=-(dt*d05(1:kpp)*r05(1:kpp)**2 / &
-                (r(1:kpp)**2*dr05(0:kpp-1)*dr(1:kpp)) )
-        ! ck
-        beta=1._wp+dt*d05(1:kpp)*r05(1:kpp)**2/(r(1:kpp)**2*dr05(0:kpp-1)*dr(1:kpp))+&
-            dt*d05(0:kpp-1)*r05(0:kpp-1)**2/(r(1:kpp)**2*dr05(0:kpp-1)*dr(0:kpp-1))
+        u=0._wp !1.e-10_wp
+        ! Conservative finite-volume discretisation in spherical shells.
+        ! The factor 4*pi cancels between shell volume and diffusive face flux.
+        alpha=-(3._wp*dt*d05(1:kpp)*r05(1:kpp)**2 / &
+                ((r05(1:kpp)**3-r05(0:kpp-1)**3)*dr(1:kpp)))
         ! ck-1
-        gamma=- dt*d05(0:kpp-1)*r05(0:kpp-1)**2 / &
-            (r(1:kpp)**2*dr05(0:kpp-1)*dr(0:kpp-1))
+        gamma=-(3._wp*dt*d05(0:kpp-1)*r05(0:kpp-1)**2 / &
+                ((r05(1:kpp)**3-r05(0:kpp-1)**3)*dr(0:kpp-1)))
+        ! ck
+        beta=1._wp-alpha-gamma
         
         
         do i=1,2
@@ -154,7 +164,6 @@
     subroutine move_boundary(kp,kp_cur,dt,radiusold,radius,r,r05,dr,dr05,vol,u,c,flux, &
         rad_min, rad_max, mwsol, rhosol, deltaV)
 		use numerics_type
-		use numerics, only : find_pos
         implicit none
 		integer(i4b), intent(inout) :: kp, kp_cur
 		real(wp), intent(inout) :: radiusold, radius, flux, mwsol, rhosol
@@ -164,13 +173,12 @@
 		real(wp), intent(inout), dimension(1:kp) :: vol
 		real(wp), intent(inout), dimension(1:kp+1,1:2) :: c
 		
-		real(wp), dimension(0:kp+1) :: rold, r05u
-		real(wp), dimension(1:kp+1,1:2) :: ctmp
-		real(wp) :: da_dt, max_flux, rnew, mf, deltaV2, volwtot, v, volw_first_layer, &
-		            volo_outer, deltaVo, volstot
+		real(wp), dimension(0:kp+1) :: r05u
+		real(wp) :: rnew, mf, deltaV2, volwtot, v, volw_first_layer, &
+		            volo_outer, deltaVo
 		real(wp), dimension(1:kp+1,1:2) :: moles
 		real(wp), dimension(2) :: moles_outer
-		integer(i4b) :: i, j, k, kp_new, iter
+		integer(i4b) :: i, j, k, kp_new
 		
 
         do i=0,kp+1
@@ -231,7 +239,6 @@
     		    ! total number of moles
     		    moles(1:kp,i)=c(1:kp,i)*vol
     		enddo
-    	    volstot=sum(moles(1:kp_cur,2)) *mwsol/rhosol ! total volume of water
     	    volwtot=sum(moles(1:kp_cur,1)) *mw/rhow ! total volume of water
     	    if (volwtot .le. 0._wp) return
     	    deltaV2=min(volwtot*0.999_wp,deltaV2) ! total volume to remove
@@ -277,9 +284,7 @@
             ! move the outer solute mass inwards                                     !
             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             volo_outer=sum(moles(k:kp_cur,2)) *mwsol/rhosol ! total volume of solute
-            iter=0
             do while ((volo_outer .gt. 0._wp) )
-                iter=iter+1
                 ! this is how much shell volume the solute,in this search, occupies:
                 deltaVo=min(4._wp*pi/3._wp*(r05u(k)**3-r05u(k-1)**3)- &
                     moles(k,1)*mw/rhow, volo_outer)
@@ -293,7 +298,6 @@
                 if(volo_outer .le. 0._wp) exit
                 k=k+1
             enddo
-!             print *,iter 
             ! find new volume of both components:
             v=moles(k,1)*mw/rhow
             v=v+moles(k,2)*mwsol/rhosol
@@ -318,9 +322,9 @@
             c(1:kp,1)=moles(1:kp,1)/vol
             c(1:kp,2)=moles(1:kp,2)/vol
             c(kp_cur+1:kp,:)=0._wp
+            ! Keep the scalar radius consistent with the moved grid boundary.
+            radius=rnew
 !             print *,volwtot, sum(moles(1:kp_cur,1)) *mw/rhow+deltaV2
-!             print *, volstot, sum(moles(1:kp_cur,2)) *mwsol/rhosol
-!     	    radius=rnew
 		endif
 		
 
@@ -359,8 +363,7 @@
 		real(wp), intent(inout), dimension(1:kp) :: vol
 		real(wp), intent(inout), dimension(1:kp+1,1:2) :: c,moles
 		
-		integer(i4b) :: i,k
-		logical :: flag=.false.
+		integer(i4b) :: i
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         ! set arrays                                                                     !
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -375,27 +378,20 @@
         
         ! if this layer is thinner than 1e-15 remove outer the layer, and add moles to
         ! inner layer        
-        if((radius-r05(kp_cur-1)).lt.1.e-15_wp) then
-            flag=.true.
+        if(kp_cur > 1 .and. (radius-r05(kp_cur-1)).lt.1.e-15_wp) then
             moles(kp_cur-1,1)=moles(kp_cur-1,1)+moles(kp_cur,1)
             moles(kp_cur-1,2)=moles(kp_cur-1,2)+moles(kp_cur,2)
             kp_cur=kp_cur-1
         endif
         
+        ! Set the moving outer face, then construct cell centres. The first
+        ! inactive centre is mirrored across the moving face. This avoids the
+        ! old kp_cur+2 access when the boundary lies in the final cell.
+        r05(kp_cur)=radius
         r(1:kp+1)=(r05(0:kp)+r05(1:kp+1))/2._wp
         r(0)=0._wp
+        if(kp_cur < kp+1) r(kp_cur+1)=2._wp*radius-r(kp_cur)
 
-        ! set the grid boundary to be the radius
-        r05(kp_cur)=radius
-        r(kp_cur)=(r05(kp_cur)+r05(kp_cur-1))/2._wp
-        ! set the grid point to be equidistant, outside of drop radius
-        r(kp_cur+1)=2._wp*radius-r(kp_cur)
-
-        r05(kp_cur+1)=(r(kp_cur+1)+r(kp_cur+2))/2._wp
-        
-        r(1:kp+1)=(r05(0:kp)+r05(1:kp+1))/2._wp
-
-        
         dr05(0:kp)=r05(1:kp+1)-r05(0:kp)
         dr05(kp+1)=dr05(kp)
         dr(0:kp)=r(1:kp+1)-r(0:kp)
@@ -469,7 +465,7 @@
 		                                                    dr05_old
 		real(wp), intent(inout), dimension(:,:), allocatable :: c, cold
 		
-		integer(i4b) :: AllocateStatus, i
+		integer(i4b) :: AllocateStatus
 		real(wp), dimension(:), allocatable :: nw,na
 		
 
@@ -478,7 +474,6 @@
         ! set scalars                                                                    !
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         kp=nm_kp
-        ntim=ceiling(nm_runtime/nm_dt)
         dt=nm_dt
         rad=nm_rad
         t=nm_t
@@ -489,6 +484,17 @@
         d_coeff=nm_d_coeff
         rad_min=nm_rad_min
         rad_max=nm_rad_max
+
+        if(kp < 3_i4b) error stop 'diffusion: kp must be at least 3'
+        if(dt <= 0._wp) error stop 'diffusion: dt must be > 0'
+        if(nm_runtime < 0._wp) error stop 'diffusion: runtime must be >= 0'
+        if(rad_min <= 0._wp .or. rad <= rad_min .or. rad >= rad_max) &
+            error stop 'diffusion: require 0 < rad_min < rad < rad_max'
+        if(rh <= 0._wp .or. rh > 1._wp) error stop 'diffusion: require 0 < rh <= 1'
+        if(mwsol <= 0._wp .or. rhosol <= 0._wp .or. nm_nu <= 0._wp) &
+            error stop 'diffusion: solute properties and nu must be > 0'
+        if(d_coeff < 0._wp) error stop 'diffusion: d_coeff must be >= 0'
+        ntim=ceiling(nm_runtime/dt)
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -530,13 +536,22 @@
         allocate( nw(1:kp), STAT = AllocateStatus)
         if (AllocateStatus /= 0) STOP "*** Not enough memory ***"        
         allocate( na(1:kp), STAT = AllocateStatus)
-        if (AllocateStatus /= 0) STOP "*** Not enough memory ***"        
+        if (AllocateStatus /= 0) STOP "*** Not enough memory ***"
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        ! Initialise storage before set_nodes. set_nodes may merge a vanishingly
+        ! thin outer layer and therefore can touch the moles argument.
+        r=0._wp; r05=0._wp; u=0._wp; d=0._wp; d05=0._wp
+        dr=0._wp; dr05=0._wp; vol=0._wp
+        r_old=0._wp; r05_old=0._wp; dr_old=0._wp; dr05_old=0._wp; vol_old=0._wp
+        c=0._wp; cold=0._wp
 
         call set_nodes(kp,kp_cur,rad,nm_rad_min, nm_rad_max,r,r05,dr,dr05,vol,c,cold)
 
-        d(1:kp+1) = d_coeff
-        d05(1:kp+1) = d_coeff
+        d(:) = d_coeff
+        d05(:) = d_coeff
+        d05(0) = 0._wp
+        d05(kp_cur:kp+1) = 0._wp
         
         
         
@@ -551,10 +566,15 @@
         
         c(1:kp,1)=nw/vol
         c(1:kp,2)=na/vol
-        
         c(kp_cur+1:kp,:)=0._wp
-        
-        
+        cold=c
+
+        r_old=r
+        r05_old=r05
+        dr_old=dr
+        dr05_old=dr05
+        vol_old=vol
+
         ! set the growth rate to zero
         u=0._wp
         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -615,7 +635,7 @@
 		real(wp), intent(inout), dimension(1:kp+1,1:2) :: c, cold
 		
 		integer(i4b) :: n
-		real(wp) :: time, radius, radiusold,flux=0._wp, deltaV
+		real(wp) :: time, radius, radiusold,flux=0._wp, deltaV, dt_step
 		
 		radius=rad
 		radiusold=radius
@@ -629,43 +649,52 @@
 		!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		! time-loop                                                                      !
 		!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-		do n=1,ntim	
-			time=real(n,wp)*dt
-			
-
+		do n=1,ntim
+            dt_step=min(dt,runtime-time)
+            if(dt_step <= 0._wp) exit
+            time=time+dt_step
+            cold=c
 
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			! calculate drop growth rate at ambient humidity                             !
+			! Driver demonstration forcing. Mode 1 reproduces the historical MATLAB      !
+            ! example, expressed as dV/dt so the result is independent of time step.      !
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
- 			radius=radius+(1.e-9_wp*2._wp*pi/200._wp*cos(2._wp*pi/200._wp*time)*dt)
-!             radius=radius-2.e-9_wp
- 			deltaV=4._wp*pi/3._wp*(radius**3-radiusold**3)
- 			
- 			deltaV=(1.e-22_wp*sin(2._wp*pi/200._wp*time))
+            select case(nmd%forcing_mode)
+            case(0_i4b)
+                deltaV=0._wp
+            case(1_i4b)
+                if(nmd%forcing_period <= 0._wp) &
+                    error stop 'diffusion: forcing_period must be > 0'
+                deltaV=nmd%forcing_dvdt_amplitude*dt_step* &
+                    sin(2._wp*pi*time/nmd%forcing_period)
+            case default
+                error stop 'diffusion: unsupported forcing_mode'
+            end select
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 
 
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 			! shift radii and calculate the velocity of boundaries                       !
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
- 			call move_boundary(kp,kp_cur,dt,radiusold,radius,r,r05,dr,dr05,vol,u,c,flux, &
+ 			call move_boundary(kp,kp_cur,dt_step,radiusold,radius,r,r05,dr,dr05,vol,u,c,flux, &
  			    rad_min,rad_max, mwsol, rhosol, deltaV)
             radiusold=radius
+            rad=radius
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 			! Set diffusion coefficient to zero at boundary                              !
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 			d05(:)=d_coeff
-			d05(kp_cur:kp) = 0._wp
+            d05(0)=0._wp
+			d05(kp_cur:kp+1)=0._wp
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 			! solve diffusion equation                                                   !
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			call backward_euler(kp,kp_cur,dt,r,r05,u,d,d05,dr,dr05,c,cold,flux)
+			call backward_euler(kp,kp_cur,dt_step,r,r05,u,d,d05,dr,dr05,c,cold,flux)
 			!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 		
