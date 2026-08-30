@@ -214,10 +214,13 @@
             ! concept here is to set the mole fraction in the new layers to mf
             call set_nodes(kp,kp_new,rnew,rad_min,rad_max, r,r05,dr,dr05,vol,c,moles)
             do j=kp_cur,kp_new
-                ! water:
-                c(j,1)=1._wp/(mw/rhow+(1._wp/mf-1._wp)*mwsol/rhosol)
-                ! other component:
-                c(j,2)=1._wp/ ( mw/rhow/(1._wp/mf-1._wp)+mwsol/rhosol )
+                ! Numerically stable form of the same ideal-volume mixture.
+                ! Unlike the old 1/(1/mf-1) algebra, this remains finite for
+                ! the pure-water and pure-solute limits and does not raise an
+                ! IEEE divide-by-zero flag as mf approaches one.
+                v=mf*mw/rhow+(1._wp-mf)*mwsol/rhosol
+                c(j,1)=mf/max(v,tiny(1._wp))
+                c(j,2)=(1._wp-mf)/max(v,tiny(1._wp))
             enddo
 !             radius=rnew
             kp_cur=kp_new
